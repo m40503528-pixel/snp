@@ -1,9 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Brain, MessageSquare, Database, Settings, Send, Plus, Trash2, 
   Search, Wifi, WifiOff, BookOpen, Sparkles, Globe, Download,
-  ChevronRight, X, Menu, Zap, Bot, User
+  ChevronRight, X, Menu, Zap, Bot, User, Layers, ArrowRight,
+  Cpu, Shield, Infinity as InfinityIcon
 } from 'lucide-react';
+import { ParticlesProvider } from '@tsparticles/react';
+import { loadSlim } from '@tsparticles/slim';
+import ParticleBackground from './components/ParticleBackground';
+import { GlassCard, GlowButton, AnimatedInput, StaggerContainer, StaggerItem } from './components/UI';
 import { 
   addKnowledge, getAllKnowledge, deleteKnowledge, searchKnowledge,
   saveSession, getAllSessions, deleteSession, getSetting, saveSetting,
@@ -20,18 +26,15 @@ function App() {
   const [showProviderSelect, setShowProviderSelect] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   
-  // Chat state
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  // Knowledge state
   const [knowledge, setKnowledge] = useState<KnowledgeEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Learn state
   const [learnTopic, setLearnTopic] = useState('');
   const [learnContent, setLearnContent] = useState('');
   const [learnCategory, setLearnCategory] = useState('general');
@@ -39,60 +42,40 @@ function App() {
   const [learnUrl, setLearnUrl] = useState('');
   const [isLearning, setIsLearning] = useState(false);
   const [learnStatus, setLearnStatus] = useState('');
-  
-  // Settings
-  const [defaultModel, setDefaultModel] = useState('local');
-  const [darkMode, setDarkMode] = useState(true);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
-    
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    
     loadData();
-    
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [currentSession?.messages]);
+  useEffect(() => { scrollToBottom(); }, [currentSession?.messages]);
 
   async function loadData() {
     const [sessionsData, knowledgeData, settings] = await Promise.all([
-      getAllSessions(),
-      getAllKnowledge(),
-      getSetting('defaultModel'),
+      getAllSessions(), getAllKnowledge(), getSetting('defaultModel'),
     ]);
-    
     setSessions(sessionsData);
     setKnowledge(knowledgeData);
-    
     if (settings) {
-      setDefaultModel(settings);
       const provider = AI_PROVIDERS.find(p => p.id === settings);
       if (provider) setSelectedProvider(provider);
     }
   }
 
-  function scrollToBottom() {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }
+  function scrollToBottom() { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }
 
   async function createNewSession() {
     const session: ChatSession = {
-      id: Date.now().toString(),
-      title: 'Новый чат',
-      messages: [],
-      createdAt: Date.now(),
-      model: selectedProvider.id,
+      id: Date.now().toString(), title: 'Новый чат', messages: [],
+      createdAt: Date.now(), model: selectedProvider.id,
     };
-    
     setCurrentSession(session);
     await saveSession(session);
     setSessions([session, ...sessions]);
@@ -100,730 +83,898 @@ function App() {
 
   async function sendMessage() {
     if (!inputMessage.trim() || isLoading) return;
-    
     let session = currentSession;
     if (!session) {
       session = {
-        id: Date.now().toString(),
-        title: inputMessage.slice(0, 50),
-        messages: [],
-        createdAt: Date.now(),
-        model: selectedProvider.id,
+        id: Date.now().toString(), title: inputMessage.slice(0, 50),
+        messages: [], createdAt: Date.now(), model: selectedProvider.id,
       };
     }
-    
     const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: inputMessage,
-      timestamp: Date.now(),
+      id: Date.now().toString(), role: 'user', content: inputMessage, timestamp: Date.now(),
     };
-    
     const updatedSession = {
       ...session,
       messages: [...session.messages, userMessage],
       title: session.messages.length === 0 ? inputMessage.slice(0, 50) : session.title,
     };
-    
     setCurrentSession(updatedSession);
     setInputMessage('');
     setIsLoading(true);
-    
     try {
-      // Get context from knowledge base
       let context = '';
       if (!selectedProvider.isLocal) {
         const relevantKnowledge = await searchKnowledge(inputMessage);
         if (relevantKnowledge.length > 0) {
-          context = relevantKnowledge.slice(0, 3).map(k => 
-            `${k.topic}: ${k.content}`
-          ).join('\n');
+          context = relevantKnowledge.slice(0, 3).map(k => `${k.topic}: ${k.content}`).join('\n');
         }
       }
-      
       const response = await selectedProvider.respond(inputMessage, context);
-      
       const assistantMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: response,
-        timestamp: Date.now(),
-        model: selectedProvider.name,
+        id: (Date.now() + 1).toString(), role: 'assistant',
+        content: response, timestamp: Date.now(), model: selectedProvider.name,
       };
-      
-      const finalSession = {
-        ...updatedSession,
-        messages: [...updatedSession.messages, assistantMessage],
-      };
-      
+      const finalSession = { ...updatedSession, messages: [...updatedSession.messages, assistantMessage] };
       setCurrentSession(finalSession);
       await saveSession(finalSession);
-      
-      // Update sessions list
-      const updatedSessions = sessions.map(s => 
-        s.id === finalSession.id ? finalSession : s
-      );
-      if (!sessions.find(s => s.id === finalSession.id)) {
-        updatedSessions.unshift(finalSession);
-      }
+      const updatedSessions = sessions.map(s => s.id === finalSession.id ? finalSession : s);
+      if (!sessions.find(s => s.id === finalSession.id)) updatedSessions.unshift(finalSession);
       setSessions(updatedSessions);
-      
     } catch (error: any) {
       const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `⚠️ Ошибка: ${error.message}. ${!isOnline ? 'Вы офлайн - используйте локальную модель NeuroMind.' : 'Попробуйте другую модель или проверьте подключение.'}`,
+        id: (Date.now() + 1).toString(), role: 'assistant',
+        content: `⚠️ Ошибка: ${error.message}. ${!isOnline ? 'Используйте локальную модель.' : 'Попробуйте другую модель.'}`,
         timestamp: Date.now(),
       };
-      
-      const errorSession = {
-        ...updatedSession,
-        messages: [...updatedSession.messages, errorMessage],
-      };
-      
+      const errorSession = { ...updatedSession, messages: [...updatedSession.messages, errorMessage] };
       setCurrentSession(errorSession);
       await saveSession(errorSession);
     }
-    
     setIsLoading(false);
   }
 
   async function learnFromText() {
     if (!learnTopic.trim() || !learnContent.trim()) return;
-    
-    await addKnowledge({
-      topic: learnTopic,
-      content: learnContent,
-      source: 'manual',
-      timestamp: Date.now(),
-      category: learnCategory,
-      tags: learnTags.split(',').map(t => t.trim()).filter(Boolean),
-    });
-    
-    setLearnTopic('');
-    setLearnContent('');
-    setLearnTags('');
+    await addKnowledge({ topic: learnTopic, content: learnContent, source: 'manual', timestamp: Date.now(), category: learnCategory, tags: learnTags.split(',').map(t => t.trim()).filter(Boolean) });
+    setLearnTopic(''); setLearnContent(''); setLearnTags('');
     setLearnStatus('✅ Знание добавлено!');
-    const updatedKnowledge = await getAllKnowledge();
-    setKnowledge(updatedKnowledge);
-    
+    setKnowledge(await getAllKnowledge());
     setTimeout(() => setLearnStatus(''), 3000);
   }
 
   async function learnFromUrl() {
     if (!learnUrl.trim()) return;
-    setIsLearning(true);
-    setLearnStatus('🌐 Загружаю данные из интернета...');
-    
+    setIsLearning(true); setLearnStatus('🌐 Загружаю данные...');
     try {
-      // Use a CORS proxy to fetch content
       const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(learnUrl)}`;
       const response = await fetch(proxyUrl);
       const html = await response.text();
-      
-      // Extract text from HTML
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
-      
-      // Remove scripts and styles
       doc.querySelectorAll('script, style, nav, footer, header').forEach(el => el.remove());
-      
       const text = doc.body?.textContent || doc.documentElement?.textContent || '';
       const cleanedText = text.replace(/\s+/g, ' ').trim().slice(0, 5000);
-      
-      if (cleanedText.length < 50) {
-        setLearnStatus('⚠️ Не удалось извлечь достаточно текста');
-        setIsLearning(false);
-        return;
-      }
-      
+      if (cleanedText.length < 50) { setLearnStatus('⚠️ Недостаточно текста'); setIsLearning(false); return; }
       const title = doc.querySelector('title')?.textContent || learnUrl;
-      
-      await addKnowledge({
-        topic: title,
-        content: cleanedText,
-        source: learnUrl,
-        timestamp: Date.now(),
-        category: 'web',
-        tags: ['internet', 'web'],
-      });
-      
-      setLearnUrl('');
-      setLearnStatus('✅ Данные из интернета добавлены в базу знаний!');
-      const updatedKnowledge = await getAllKnowledge();
-      setKnowledge(updatedKnowledge);
-      
-    } catch (error: any) {
-      setLearnStatus(`⚠️ Ошибка: ${error.message}`);
-    }
-    
+      await addKnowledge({ topic: title, content: cleanedText, source: learnUrl, timestamp: Date.now(), category: 'web', tags: ['internet', 'web'] });
+      setLearnUrl(''); setLearnStatus('✅ Данные добавлены!');
+      setKnowledge(await getAllKnowledge());
+    } catch (error: any) { setLearnStatus(`⚠️ ${error.message}`); }
     setIsLearning(false);
     setTimeout(() => setLearnStatus(''), 5000);
   }
 
-  async function removeKnowledge(id: number) {
-    await deleteKnowledge(id);
-    const updated = await getAllKnowledge();
-    setKnowledge(updated);
-  }
-
+  async function removeKnowledge(id: number) { await deleteKnowledge(id); setKnowledge(await getAllKnowledge()); }
   async function removeSession(id: string) {
     await deleteSession(id);
     const updated = sessions.filter(s => s.id !== id);
     setSessions(updated);
-    if (currentSession?.id === id) {
-      setCurrentSession(null);
-    }
-  }
-
-  async function saveSettings() {
-    await saveSetting('defaultModel', defaultModel);
-    const provider = AI_PROVIDERS.find(p => p.id === defaultModel);
-    if (provider) setSelectedProvider(provider);
+    if (currentSession?.id === id) setCurrentSession(null);
   }
 
   const filteredKnowledge = searchQuery 
-    ? knowledge.filter(k => 
-        k.topic.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        k.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        k.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
-      )
+    ? knowledge.filter(k => k.topic.toLowerCase().includes(searchQuery.toLowerCase()) || k.content.toLowerCase().includes(searchQuery.toLowerCase()) || k.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase())))
     : knowledge;
 
+  const navItems = [
+    { id: 'chat' as Tab, icon: MessageSquare, label: 'Чат с AI', desc: 'Диалог с нейросетью' },
+    { id: 'knowledge' as Tab, icon: Database, label: 'База знаний', desc: `${knowledge.length} записей` },
+    { id: 'learn' as Tab, icon: BookOpen, label: 'Обучение', desc: 'Добавить знания' },
+    { id: 'settings' as Tab, icon: Settings, label: 'Настройки', desc: 'Конфигурация' },
+  ];
+
   return (
-    <div className={`flex h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
-      {/* Sidebar */}
-      <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed md:relative z-30 w-72 h-full transition-transform duration-300 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-r flex flex-col`}>
-        {/* Logo */}
-        <div className="p-4 border-b border-inherit">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
-              <Brain className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="font-bold text-lg">NeuroMind</h1>
-              <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Локальная нейросеть</p>
-            </div>
-          </div>
+    <ParticlesProvider init={async (engine: any) => { await loadSlim(engine); }}>
+      <div className="flex h-screen bg-[#0a0a0f] text-white overflow-hidden relative">
+        {/* Noise overlay */}
+        <div className="noise-overlay" />
+        
+        {/* Animated Background */}
+        <div className="fixed inset-0 z-0">
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-transparent to-blue-900/20" />
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-[120px] animate-pulse" />
+          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '1s' }} />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-600/5 rounded-full blur-[150px]" />
+          <ParticleBackground />
         </div>
 
-        {/* Navigation */}
-        <nav className="p-3 space-y-1">
-          {[
-            { id: 'chat' as Tab, icon: MessageSquare, label: 'Чат с AI' },
-            { id: 'knowledge' as Tab, icon: Database, label: 'База знаний' },
-            { id: 'learn' as Tab, icon: BookOpen, label: 'Обучение' },
-            { id: 'settings' as Tab, icon: Settings, label: 'Настройки' },
-          ].map(item => (
-            <button
-              key={item.id}
-              onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                activeTab === item.id 
-                  ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg' 
-                  : darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-700'
-              }`}
-            >
-              <item.icon className="w-5 h-5" />
-              <span className="font-medium">{item.label}</span>
-            </button>
-          ))}
-        </nav>
-
-        {/* Status */}
-        <div className="mt-auto p-4 border-t border-inherit">
-          <div className={`flex items-center gap-2 text-sm ${isOnline ? 'text-green-400' : 'text-orange-400'}`}>
-            {isOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
-            <span>{isOnline ? 'Онлайн' : 'Офлайн режим'}</span>
-          </div>
-          <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-            Знаний: {knowledge.length} | Сессий: {sessions.length}
-          </p>
-        </div>
-      </div>
-
-      {/* Overlay for mobile sidebar */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-20 md:hidden" onClick={() => setSidebarOpen(false)} />
-      )}
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <header className={`flex items-center justify-between px-4 py-3 border-b ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white/50'} backdrop-blur-sm`}>
-          <div className="flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 rounded-lg hover:bg-gray-700">
-              <Menu className="w-5 h-5" />
-            </button>
-            <h2 className="text-lg font-semibold">
-              {activeTab === 'chat' && '💬 Чат с AI'}
-              {activeTab === 'knowledge' && '📚 База знаний'}
-              {activeTab === 'learn' && '🎓 Обучение'}
-              {activeTab === 'settings' && '⚙️ Настройки'}
-            </h2>
-          </div>
-          
-          {activeTab === 'chat' && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowProviderSelect(!showProviderSelect)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'}`}
+        {/* Sidebar */}
+        <AnimatePresence>
+          <motion.aside
+            initial={false}
+            animate={{ x: sidebarOpen ? 0 : typeof window !== 'undefined' && window.innerWidth >= 768 ? 0 : -300 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            className={`
+              fixed md:relative z-30 w-72 h-full
+              bg-black/40 backdrop-blur-2xl
+              border-r border-white/[0.06]
+              flex flex-col
+              ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+              transition-transform duration-300 md:transition-none
+            `}
+          >
+            {/* Logo */}
+            <div className="p-5 border-b border-white/[0.06]">
+              <motion.div 
+                className="flex items-center gap-3"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.1 }}
               >
-                <span>{selectedProvider.icon}</span>
-                <span className="hidden sm:inline">{selectedProvider.name}</span>
-                <ChevronRight className="w-4 h-4 rotate-90" />
-              </button>
-            </div>
-          )}
-        </header>
-
-        {/* Provider Selector */}
-        {showProviderSelect && activeTab === 'chat' && (
-          <div className={`absolute top-16 right-4 z-40 w-80 rounded-xl shadow-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} p-3 space-y-2`}>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-sm">Выберите AI модель</h3>
-              <button onClick={() => setShowProviderSelect(false)} className="p-1 rounded hover:bg-gray-700">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            {AI_PROVIDERS.map(provider => (
-              <button
-                key={provider.id}
-                onClick={() => { setSelectedProvider(provider); setShowProviderSelect(false); }}
-                className={`w-full flex items-start gap-3 p-3 rounded-lg transition-all ${
-                  selectedProvider.id === provider.id 
-                    ? 'bg-purple-600/20 border border-purple-500' 
-                    : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
-                }`}
-              >
-                <span className="text-2xl">{provider.icon}</span>
-                <div className="text-left">
-                  <p className="font-medium text-sm">{provider.name}</p>
-                  <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{provider.description}</p>
-                  {!provider.isLocal && !isOnline && (
-                    <p className="text-xs text-orange-400 mt-1">⚠️ Требуется интернет</p>
-                  )}
+                <motion.div 
+                  className="relative w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-500 via-violet-500 to-blue-600 flex items-center justify-center shadow-lg shadow-purple-500/30"
+                  whileHover={{ rotate: 180, scale: 1.1 }}
+                  transition={{ duration: 0.5 }}
+                >
+                  <Brain className="w-6 h-6 text-white" />
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/20 to-transparent" />
+                </motion.div>
+                <div>
+                  <h1 className="font-bold text-lg bg-gradient-to-r from-purple-300 to-blue-300 bg-clip-text text-transparent">
+                    NeuroMind
+                  </h1>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-widest">AI Platform</p>
                 </div>
-              </button>
-            ))}
-          </div>
-        )}
+              </motion.div>
+            </div>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-hidden">
-          {/* Chat Tab */}
-          {activeTab === 'chat' && (
-            <div className="flex h-full">
-              {/* Chat Messages */}
-              <div className="flex-1 flex flex-col">
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                  {!currentSession || currentSession.messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center">
-                      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center mb-6">
-                        <Sparkles className="w-10 h-10 text-white" />
+            {/* Navigation */}
+            <nav className="p-3 space-y-1 flex-1">
+              <StaggerContainer>
+                {navItems.map((item) => (
+                  <StaggerItem key={item.id}>
+                    <motion.button
+                      whileHover={{ x: 4 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
+                      className={`
+                        w-full flex items-center gap-3 px-4 py-3.5 rounded-xl 
+                        transition-all duration-300 group relative overflow-hidden
+                        ${activeTab === item.id 
+                          ? 'bg-gradient-to-r from-purple-600/30 to-blue-600/20 border border-purple-500/30 shadow-lg shadow-purple-500/10' 
+                          : 'hover:bg-white/[0.04] border border-transparent'
+                        }
+                      `}
+                    >
+                      {activeTab === item.id && (
+                        <motion.div
+                          layoutId="activeTab"
+                          className="absolute inset-0 bg-gradient-to-r from-purple-600/20 to-blue-600/10 rounded-xl"
+                          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                        />
+                      )}
+                      <item.icon className={`w-5 h-5 relative z-10 ${activeTab === item.id ? 'text-purple-400' : 'text-gray-500 group-hover:text-gray-300'}`} />
+                      <div className="relative z-10 text-left">
+                        <p className={`font-medium text-sm ${activeTab === item.id ? 'text-white' : 'text-gray-400 group-hover:text-gray-200'}`}>{item.label}</p>
+                        <p className="text-[10px] text-gray-600">{item.desc}</p>
                       </div>
-                      <h3 className="text-2xl font-bold mb-2">NeuroMind AI</h3>
-                      <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} max-w-md`}>
-                        Выберите модель AI и начните диалог. Локальная модель работает без интернета!
-                      </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-8 max-w-lg">
-                        {AI_PROVIDERS.map(p => (
-                          <button
-                            key={p.id}
-                            onClick={() => setSelectedProvider(p)}
-                            className={`p-3 rounded-xl border text-left transition-all ${
-                              selectedProvider.id === p.id 
-                                ? 'border-purple-500 bg-purple-500/10' 
-                                : darkMode ? 'border-gray-700 hover:border-gray-600' : 'border-gray-200 hover:border-gray-300'
-                            }`}
-                          >
-                            <span className="text-xl">{p.icon}</span>
-                            <p className="font-medium text-sm mt-1">{p.name}</p>
-                            <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                              {p.isLocal ? '🟢 Офлайн' : '🌐 Онлайн'}
-                            </p>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    currentSession.messages.map(msg => (
-                      <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
-                        {msg.role === 'assistant' && (
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center flex-shrink-0">
-                            <Bot className="w-4 h-4 text-white" />
-                          </div>
-                        )}
-                        <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                          msg.role === 'user' 
-                            ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white' 
-                            : darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200 shadow-sm'
-                        }`}>
-                          <div className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</div>
-                          {msg.model && (
-                            <p className={`text-xs mt-2 ${msg.role === 'user' ? 'text-purple-200' : darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                              {msg.model}
-                            </p>
-                          )}
-                        </div>
-                        {msg.role === 'user' && (
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0">
-                            <User className="w-4 h-4 text-white" />
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                  {isLoading && (
-                    <div className="flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
-                        <Bot className="w-4 h-4 text-white" />
-                      </div>
-                      <div className={`rounded-2xl px-4 py-3 ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'}`}>
-                        <div className="flex gap-1">
-                          <div className="w-2 h-2 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                          <div className="w-2 h-2 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                          <div className="w-2 h-2 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  <div ref={messagesEndRef} />
+                    </motion.button>
+                  </StaggerItem>
+                ))}
+              </StaggerContainer>
+            </nav>
+
+            {/* Status Footer */}
+            <div className="p-4 border-t border-white/[0.06]">
+              <GlassCard className="p-3 !rounded-xl">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 shadow-lg shadow-emerald-400/50' : 'bg-amber-400 shadow-lg shadow-amber-400/50'} animate-pulse`} />
+                  <span className="text-xs text-gray-400">{isOnline ? 'Онлайн' : 'Офлайн'}</span>
                 </div>
-
-                {/* Input */}
-                <div className={`p-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                  <div className="flex gap-2 max-w-4xl mx-auto">
-                    <button
-                      onClick={createNewSession}
-                      className={`p-3 rounded-xl transition-all ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'}`}
-                      title="Новый чат"
-                    >
-                      <Plus className="w-5 h-5" />
-                    </button>
-                    <input
-                      type="text"
-                      value={inputMessage}
-                      onChange={e => setInputMessage(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && sendMessage()}
-                      placeholder={`Спросите ${selectedProvider.name}...`}
-                      className={`flex-1 px-4 py-3 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700 focus:border-purple-500' : 'bg-white border-gray-200 focus:border-purple-500'} outline-none transition-colors`}
-                    />
-                    <button
-                      onClick={sendMessage}
-                      disabled={isLoading || !inputMessage.trim()}
-                      className="px-4 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
-                    >
-                      <Send className="w-5 h-5" />
-                    </button>
+                <div className="flex gap-4 mt-2">
+                  <div>
+                    <p className="text-lg font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">{knowledge.length}</p>
+                    <p className="text-[10px] text-gray-600">знаний</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">{sessions.length}</p>
+                    <p className="text-[10px] text-gray-600">чатов</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold bg-gradient-to-r from-cyan-400 to-emerald-400 bg-clip-text text-transparent">{AI_PROVIDERS.length}</p>
+                    <p className="text-[10px] text-gray-600">моделей</p>
                   </div>
                 </div>
-              </div>
+              </GlassCard>
+            </div>
+          </motion.aside>
+        </AnimatePresence>
 
-              {/* Sessions List */}
-              <div className={`hidden lg:flex flex-col w-64 border-l ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
-                <div className="p-3 border-b border-inherit">
-                  <h3 className="font-semibold text-sm px-2">История чатов</h3>
+        {/* Mobile overlay */}
+        <AnimatePresence>
+          {sidebarOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-20 md:hidden"
+              onClick={() => setSidebarOpen(false)}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Main Content */}
+        <main className="flex-1 flex flex-col overflow-hidden relative z-10">
+          {/* Header */}
+          <header className="flex items-center justify-between px-5 py-3 border-b border-white/[0.06] bg-black/20 backdrop-blur-xl">
+            <div className="flex items-center gap-3">
+              <motion.button 
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setSidebarOpen(true)} 
+                className="md:hidden p-2 rounded-xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.1] transition-colors"
+              >
+                <Menu className="w-5 h-5" />
+              </motion.button>
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-2"
+              >
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center border border-purple-500/20">
+                  {activeTab === 'chat' && <MessageSquare className="w-4 h-4 text-purple-400" />}
+                  {activeTab === 'knowledge' && <Database className="w-4 h-4 text-blue-400" />}
+                  {activeTab === 'learn' && <BookOpen className="w-4 h-4 text-cyan-400" />}
+                  {activeTab === 'settings' && <Settings className="w-4 h-4 text-emerald-400" />}
                 </div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                  {sessions.map(session => (
-                    <div
-                      key={session.id}
-                      className={`group flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all ${
-                        currentSession?.id === session.id 
-                          ? darkMode ? 'bg-gray-700' : 'bg-gray-200' 
-                          : darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-100'
-                      }`}
-                      onClick={() => setCurrentSession(session)}
-                    >
-                      <MessageSquare className="w-4 h-4 flex-shrink-0 text-purple-400" />
-                      <span className="text-sm truncate flex-1">{session.title}</span>
-                      <button
-                        onClick={e => { e.stopPropagation(); removeSession(session.id); }}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/20 text-red-400"
+                <div>
+                  <h2 className="text-sm font-semibold">
+                    {activeTab === 'chat' && 'Диалог с AI'}
+                    {activeTab === 'knowledge' && 'База знаний'}
+                    {activeTab === 'learn' && 'Обучение нейросети'}
+                    {activeTab === 'settings' && 'Настройки'}
+                  </h2>
+                </div>
+              </motion.div>
+            </div>
+            
+            {activeTab === 'chat' && (
+              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}>
+                <GlowButton
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowProviderSelect(!showProviderSelect)}
+                  icon={<span className="text-base">{selectedProvider.icon}</span>}
+                >
+                  <span className="hidden sm:inline">{selectedProvider.name}</span>
+                  <ChevronRight className="w-3 h-3 rotate-90" />
+                </GlowButton>
+              </motion.div>
+            )}
+          </header>
+
+          {/* Provider Selector Dropdown */}
+          <AnimatePresence>
+            {showProviderSelect && activeTab === 'chat' && (
+              <motion.div
+                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                transition={{ duration: 0.2 }}
+                className="absolute top-16 right-5 z-50 w-96"
+              >
+                <GlassCard className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-sm flex items-center gap-2">
+                      <Cpu className="w-4 h-4 text-purple-400" />
+                      AI Модели
+                    </h3>
+                    <button onClick={() => setShowProviderSelect(false)} className="p-1 rounded-lg hover:bg-white/10 transition-colors">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                    {AI_PROVIDERS.map((provider, i) => (
+                      <motion.button
+                        key={provider.id}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.05 }}
+                        whileHover={{ x: 4 }}
+                        onClick={() => { setSelectedProvider(provider); setShowProviderSelect(false); }}
+                        className={`
+                          w-full flex items-start gap-3 p-3 rounded-xl transition-all text-left
+                          ${selectedProvider.id === provider.id 
+                            ? 'bg-purple-500/15 border border-purple-500/30 shadow-lg shadow-purple-500/10' 
+                            : 'hover:bg-white/[0.05] border border-transparent'
+                          }
+                        `}
                       >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Knowledge Tab */}
-          {activeTab === 'knowledge' && (
-            <div className="h-full flex flex-col p-4 overflow-hidden">
-              <div className="flex gap-3 mb-4">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    placeholder="Поиск по базе знаний..."
-                    className={`w-full pl-10 pr-4 py-2 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} outline-none`}
-                  />
-                </div>
-              </div>
-              
-              <div className="flex-1 overflow-y-auto space-y-3">
-                {filteredKnowledge.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center">
-                    <Database className="w-16 h-16 text-gray-600 mb-4" />
-                    <p className="text-gray-400">
-                      {searchQuery ? 'Ничего не найдено' : 'База знаний пуста. Перейдите в раздел "Обучение" чтобы добавить знания.'}
-                    </p>
-                  </div>
-                ) : (
-                  filteredKnowledge.map(entry => (
-                    <div key={entry.id} className={`p-4 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-purple-400">{entry.topic}</h4>
-                          <p className={`text-sm mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'} line-clamp-3`}>
-                            {entry.content}
-                          </p>
-                          <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
-                              {entry.category}
+                        <span className="text-2xl mt-0.5">{provider.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm">{provider.name}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{provider.description}</p>
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                              provider.isLocal 
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                            }`}>
+                              {provider.isLocal ? '🟢 Офлайн' : '🌐 Онлайн'}
                             </span>
-                            {entry.tags.map(tag => (
-                              <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">
-                                #{tag}
-                              </span>
-                            ))}
-                            {entry.source !== 'manual' && (
-                              <span className="text-xs text-blue-400 flex items-center gap-1">
-                                <Globe className="w-3 h-3" /> {entry.source.slice(0, 30)}...
-                              </span>
-                            )}
+                            <span className="text-[10px] text-gray-600">Бесплатно</span>
                           </div>
                         </div>
-                        <button
-                          onClick={() => removeKnowledge(entry.id!)}
-                          className="p-2 rounded-lg hover:bg-red-500/20 text-red-400"
+                      </motion.button>
+                    ))}
+                  </div>
+                </GlassCard>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Content Area */}
+          <div className="flex-1 overflow-hidden">
+            <AnimatePresence mode="wait">
+              {/* CHAT TAB */}
+              {activeTab === 'chat' && (
+                <motion.div
+                  key="chat"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="flex h-full"
+                >
+                  <div className="flex-1 flex flex-col">
+                    <div className="flex-1 overflow-y-auto px-4 py-6">
+                      {!currentSession || currentSession.messages.length === 0 ? (
+                        <motion.div 
+                          className="flex flex-col items-center justify-center h-full text-center px-4"
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ duration: 0.5 }}
                         >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                          <motion.div
+                            animate={{ 
+                              boxShadow: ['0 0 40px rgba(168,85,247,0.3)', '0 0 80px rgba(99,102,241,0.4)', '0 0 40px rgba(168,85,247,0.3)']
+                            }}
+                            transition={{ duration: 3, repeat: Number.POSITIVE_INFINITY }}
+                            className="w-24 h-24 rounded-3xl bg-gradient-to-br from-purple-500 via-violet-500 to-blue-600 flex items-center justify-center mb-8 relative"
+                          >
+                            <Sparkles className="w-12 h-12 text-white" />
+                            <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/20 to-transparent" />
+                          </motion.div>
+                          
+                          <motion.h3 
+                            className="text-3xl font-bold mb-3 bg-gradient-to-r from-purple-300 via-violet-300 to-blue-300 bg-clip-text text-transparent"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.2 }}
+                          >
+                            NeuroMind AI
+                          </motion.h3>
+                          <motion.p 
+                            className="text-gray-500 max-w-md mb-10 text-sm leading-relaxed"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.3 }}
+                          >
+                            Выберите AI модель и начните диалог. Локальная модель работает без интернета, а облачные — бесплатно и без ключей.
+                          </motion.p>
+                          
+                          <motion.div 
+                            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-2xl w-full"
+                            initial={{ opacity: 0, y: 30 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.4 }}
+                          >
+                            {AI_PROVIDERS.map((p, i) => (
+                              <motion.button
+                                key={p.id}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.5 + i * 0.08 }}
+                                whileHover={{ scale: 1.03, y: -4 }}
+                                whileTap={{ scale: 0.97 }}
+                                onClick={() => setSelectedProvider(p)}
+                                className={`
+                                  p-4 rounded-2xl border text-left transition-all relative overflow-hidden group
+                                  ${selectedProvider.id === p.id 
+                                    ? 'border-purple-500/40 bg-purple-500/10 shadow-lg shadow-purple-500/10' 
+                                    : 'border-white/[0.06] bg-white/[0.02] hover:border-white/[0.12] hover:bg-white/[0.04]'
+                                  }
+                                `}
+                              >
+                                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-purple-500/10 to-transparent rounded-bl-full opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <span className="text-2xl">{p.icon}</span>
+                                <p className="font-medium text-sm mt-2">{p.name}</p>
+                                <p className="text-[10px] text-gray-500 mt-1">
+                                  {p.isLocal ? '🟢 Работает офлайн' : '🌐 Бесплатно, без ключей'}
+                                </p>
+                              </motion.button>
+                            ))}
+                          </motion.div>
+
+                          {/* Features */}
+                          <motion.div 
+                            className="flex flex-wrap justify-center gap-6 mt-12"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: 0.8 }}
+                          >
+                            {[
+                              { Icon: Shield, text: 'Приватность', color: 'text-emerald-400' },
+                              { Icon: InfinityIcon, text: 'Бесплатно', color: 'text-purple-400' },
+                              { Icon: Layers, text: '7 AI моделей', color: 'text-blue-400' },
+                              { Icon: Cpu, text: 'Офлайн режим', color: 'text-cyan-400' },
+                            ].map((f, i) => {
+                              const IconComp = f.Icon;
+                              return (
+                                <motion.div 
+                                  key={f.text}
+                                  initial={{ opacity: 0, y: 10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  transition={{ delay: 0.9 + i * 0.1 }}
+                                  className="flex items-center gap-2 text-xs text-gray-500"
+                                >
+                                  <IconComp className={`w-4 h-4 ${f.color}`} />
+                                  {f.text}
+                                </motion.div>
+                              );
+                            })}
+                          </motion.div>
+                        </motion.div>
+                      ) : (
+                        <div className="max-w-3xl mx-auto space-y-5">
+                          {currentSession.messages.map((msg, i) => (
+                            <motion.div
+                              key={msg.id}
+                              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              transition={{ duration: 0.3, delay: i * 0.05 }}
+                              className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}
+                            >
+                              {msg.role === 'assistant' && (
+                                <motion.div 
+                                  initial={{ scale: 0 }}
+                                  animate={{ scale: 1 }}
+                                  className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-purple-500/20"
+                                >
+                                  <Bot className="w-4 h-4 text-white" />
+                                </motion.div>
+                              )}
+                              <motion.div 
+                                className={`max-w-[80%] rounded-2xl px-5 py-3.5 ${
+                                  msg.role === 'user' 
+                                    ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg shadow-purple-500/20' 
+                                    : 'bg-white/[0.04] backdrop-blur-sm border border-white/[0.08]'
+                                }`}
+                                whileHover={{ scale: 1.01 }}
+                              >
+                                <div className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                                {msg.model && (
+                                  <p className={`text-[10px] mt-2 ${msg.role === 'user' ? 'text-purple-200' : 'text-gray-600'}`}>
+                                    {msg.model}
+                                  </p>
+                                )}
+                              </motion.div>
+                              {msg.role === 'user' && (
+                                <motion.div 
+                                  initial={{ scale: 0 }}
+                                  animate={{ scale: 1 }}
+                                  className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-emerald-500/20"
+                                >
+                                  <User className="w-4 h-4 text-white" />
+                                </motion.div>
+                              )}
+                            </motion.div>
+                          ))}
+                          
+                          {isLoading && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="flex gap-3"
+                            >
+                              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
+                                <Bot className="w-4 h-4 text-white" />
+                              </div>
+                              <div className="bg-white/[0.04] backdrop-blur-sm border border-white/[0.08] rounded-2xl px-5 py-4">
+                                <div className="flex gap-1.5">
+                                  {[0, 1, 2].map(i => (
+                                    <motion.div
+                                      key={i}
+                                      animate={{ y: [0, -8, 0], opacity: [0.4, 1, 0.4] }}
+                                      transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.15 }}
+                                      className="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-purple-400 to-blue-400"
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                          <div ref={messagesEndRef} />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Input */}
+                    <div className="p-4 border-t border-white/[0.06] bg-black/20 backdrop-blur-xl">
+                      <div className="flex gap-2 max-w-3xl mx-auto">
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={createNewSession}
+                          className="p-3 rounded-xl bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] hover:border-purple-500/30 transition-all"
+                          title="Новый чат"
+                        >
+                          <Plus className="w-5 h-5 text-gray-400" />
+                        </motion.button>
+                        <div className="flex-1 relative group">
+                          <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-xl opacity-0 group-focus-within:opacity-100 transition-opacity duration-500 blur-sm" />
+                          <input
+                            type="text"
+                            value={inputMessage}
+                            onChange={e => setInputMessage(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                            placeholder={`Спросите ${selectedProvider.name}...`}
+                            className="relative w-full px-5 py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] focus:border-purple-500/40 outline-none text-sm placeholder-gray-500 transition-all duration-300"
+                          />
+                        </div>
+                        <GlowButton
+                          onClick={sendMessage}
+                          disabled={isLoading || !inputMessage.trim()}
+                          icon={<Send className="w-4 h-4" />}
+                        >
+                          <span className="hidden sm:inline">Отправить</span>
+                        </GlowButton>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
+                  </div>
 
-          {/* Learn Tab */}
-          {activeTab === 'learn' && (
-            <div className="h-full overflow-y-auto p-4">
-              <div className="max-w-2xl mx-auto space-y-6">
-                {/* Learn from URL */}
-                <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                      <Globe className="w-5 h-5 text-white" />
+                  {/* Sessions sidebar */}
+                  <div className="hidden xl:flex flex-col w-64 border-l border-white/[0.06] bg-black/20 backdrop-blur-xl">
+                    <div className="p-4 border-b border-white/[0.06]">
+                      <h3 className="font-semibold text-xs text-gray-400 uppercase tracking-wider">История</h3>
                     </div>
-                    <div>
-                      <h3 className="font-semibold">Обучение из интернета</h3>
-                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Загрузите данные с любого веб-сайта</p>
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                      <AnimatePresence>
+                        {sessions.map((session, i) => (
+                          <motion.div
+                            key={session.id}
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            transition={{ delay: i * 0.03 }}
+                            className={`
+                              group flex items-center gap-2 p-2.5 rounded-xl cursor-pointer transition-all
+                              ${currentSession?.id === session.id 
+                                ? 'bg-purple-500/10 border border-purple-500/20' 
+                                : 'hover:bg-white/[0.04] border border-transparent'
+                              }
+                            `}
+                            onClick={() => setCurrentSession(session)}
+                          >
+                            <MessageSquare className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
+                            <span className="text-xs truncate flex-1 text-gray-300">{session.title}</span>
+                            <motion.button
+                              whileHover={{ scale: 1.2 }}
+                              whileTap={{ scale: 0.8 }}
+                              onClick={e => { e.stopPropagation(); removeSession(session.id); }}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-red-500/20 text-red-400 transition-all"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </motion.button>
+                          </motion.div>
+                        ))}
+                      </AnimatePresence>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      value={learnUrl}
-                      onChange={e => setLearnUrl(e.target.value)}
-                      placeholder="https://example.com/article"
-                      className={`flex-1 px-4 py-2 rounded-xl border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'} outline-none`}
-                    />
-                    <button
-                      onClick={learnFromUrl}
-                      disabled={isLearning || !learnUrl.trim()}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-medium disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {isLearning ? <Zap className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                      {isLearning ? 'Загрузка...' : 'Загрузить'}
-                    </button>
-                  </div>
-                </div>
+                </motion.div>
+              )}
 
-                {/* Manual Entry */}
-                <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                      <BookOpen className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold">Добавить знания вручную</h3>
-                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Введите информацию для базы знаний</p>
+              {/* KNOWLEDGE TAB */}
+              {activeTab === 'knowledge' && (
+                <motion.div
+                  key="knowledge"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="h-full flex flex-col p-5 overflow-hidden"
+                >
+                  <div className="flex gap-3 mb-5">
+                    <div className="flex-1 relative group">
+                      <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-xl opacity-0 group-focus-within:opacity-100 transition-opacity blur-sm" />
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        placeholder="Поиск по базе знаний..."
+                        className="relative w-full pl-10 pr-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] focus:border-purple-500/40 outline-none text-sm placeholder-gray-500 transition-all"
+                      />
                     </div>
                   </div>
                   
-                  <div className="space-y-3">
-                    <input
-                      type="text"
-                      value={learnTopic}
-                      onChange={e => setLearnTopic(e.target.value)}
-                      placeholder="Тема (например: Квантовая физика)"
-                      className={`w-full px-4 py-2 rounded-xl border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'} outline-none`}
-                    />
-                    <textarea
-                      value={learnContent}
-                      onChange={e => setLearnContent(e.target.value)}
-                      placeholder="Содержание... (чем больше информации, тем лучше AI будет отвечать)"
-                      rows={5}
-                      className={`w-full px-4 py-2 rounded-xl border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'} outline-none resize-none`}
-                    />
-                    <div className="grid grid-cols-2 gap-3">
-                      <input
-                        type="text"
-                        value={learnCategory}
-                        onChange={e => setLearnCategory(e.target.value)}
-                        placeholder="Категория"
-                        className={`px-4 py-2 rounded-xl border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'} outline-none`}
-                      />
-                      <input
-                        type="text"
-                        value={learnTags}
-                        onChange={e => setLearnTags(e.target.value)}
-                        placeholder="Теги (через запятую)"
-                        className={`px-4 py-2 rounded-xl border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'} outline-none`}
-                      />
-                    </div>
-                    <button
-                      onClick={learnFromText}
-                      disabled={!learnTopic.trim() || !learnContent.trim()}
-                      className="w-full px-4 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-medium disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Добавить в базу знаний
-                    </button>
-                  </div>
-                </div>
-
-                {/* Status */}
-                {learnStatus && (
-                  <div className={`p-4 rounded-xl text-center font-medium ${
-                    learnStatus.includes('✅') ? 'bg-green-500/20 text-green-400' : 
-                    learnStatus.includes('⚠️') ? 'bg-orange-500/20 text-orange-400' :
-                    'bg-blue-500/20 text-blue-400'
-                  }`}>
-                    {learnStatus}
-                  </div>
-                )}
-
-                {/* Stats */}
-                <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                  <h3 className="font-semibold mb-4">📊 Статистика базы знаний</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-purple-400">{knowledge.length}</p>
-                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Всего записей</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-blue-400">
-                        {new Set(knowledge.map(k => k.category)).size}
-                      </p>
-                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Категорий</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-green-400">
-                        {knowledge.filter(k => k.source !== 'manual').length}
-                      </p>
-                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Из интернета</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-pink-400">
-                        {knowledge.reduce((sum, k) => sum + k.tags.length, 0)}
-                      </p>
-                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Тегов</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Settings Tab */}
-          {activeTab === 'settings' && (
-            <div className="h-full overflow-y-auto p-4">
-              <div className="max-w-2xl mx-auto space-y-6">
-                <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                  <h3 className="font-semibold mb-4">🤖 Модель по умолчанию</h3>
-                  <div className="space-y-2">
-                    {AI_PROVIDERS.map(provider => (
-                      <label key={provider.id} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${
-                        defaultModel === provider.id 
-                          ? 'bg-purple-500/20 border border-purple-500' 
-                          : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
-                      }`}>
-                        <input
-                          type="radio"
-                          name="model"
-                          value={provider.id}
-                          checked={defaultModel === provider.id}
-                          onChange={() => setDefaultModel(provider.id)}
-                          className="accent-purple-500"
-                        />
-                        <span className="text-xl">{provider.icon}</span>
-                        <div>
-                          <p className="font-medium text-sm">{provider.name}</p>
-                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{provider.description}</p>
+                  <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                    {filteredKnowledge.length === 0 ? (
+                      <motion.div 
+                        className="flex flex-col items-center justify-center h-full text-center"
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                      >
+                        <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-blue-500/20 to-cyan-500/20 flex items-center justify-center mb-5 border border-blue-500/20">
+                          <Database className="w-10 h-10 text-blue-400" />
                         </div>
-                      </label>
-                    ))}
+                        <p className="text-gray-500 text-sm">
+                          {searchQuery ? 'Ничего не найдено' : 'База знаний пуста. Перейдите в "Обучение" чтобы добавить знания.'}
+                        </p>
+                      </motion.div>
+                    ) : (
+                      <StaggerContainer className="space-y-3">
+                        {filteredKnowledge.map(entry => (
+                          <StaggerItem key={entry.id}>
+                            <GlassCard className="p-4" hover>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <h4 className="font-semibold text-sm bg-gradient-to-r from-purple-300 to-blue-300 bg-clip-text text-transparent">{entry.topic}</h4>
+                                  <p className="text-xs text-gray-400 mt-1.5 line-clamp-2 leading-relaxed">{entry.content}</p>
+                                  <div className="flex items-center gap-2 mt-3 flex-wrap">
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-gray-400">
+                                      {entry.category}
+                                    </span>
+                                    {entry.tags.slice(0, 3).map(tag => (
+                                      <span key={tag} className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300">
+                                        #{tag}
+                                      </span>
+                                    ))}
+                                    {entry.source !== 'manual' && (
+                                      <span className="text-[10px] text-cyan-400 flex items-center gap-1">
+                                        <Globe className="w-3 h-3" /> web
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <motion.button
+                                  whileHover={{ scale: 1.1 }}
+                                  whileTap={{ scale: 0.9 }}
+                                  onClick={() => removeKnowledge(entry.id!)}
+                                  className="p-2 rounded-lg hover:bg-red-500/20 text-red-400/60 hover:text-red-400 transition-all"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </motion.button>
+                              </div>
+                            </GlassCard>
+                          </StaggerItem>
+                        ))}
+                      </StaggerContainer>
+                    )}
                   </div>
-                </div>
+                </motion.div>
+              )}
 
-                <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                  <h3 className="font-semibold mb-4">🎨 Оформление</h3>
-                  <label className="flex items-center justify-between cursor-pointer">
-                    <span>Тёмная тема</span>
-                    <div className={`w-12 h-6 rounded-full transition-colors ${darkMode ? 'bg-purple-600' : 'bg-gray-300'} relative`}
-                      onClick={() => setDarkMode(!darkMode)}>
-                      <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${darkMode ? 'translate-x-6' : 'translate-x-0.5'}`} />
-                    </div>
-                  </label>
-                </div>
-
-                <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                  <h3 className="font-semibold mb-4">💾 Данные</h3>
-                  <div className="space-y-3">
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      Все данные хранятся локально в IndexedDB вашего браузера. При удалении данных браузера база знаний будет потеряна.
-                    </p>
-                    <button
-                      onClick={() => {
-                        const data = { knowledge, sessions };
-                        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = 'neuromind-backup.json';
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }}
-                      className="w-full px-4 py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-medium flex items-center justify-center gap-2"
-                    >
-                      <Download className="w-4 h-4" />
-                      Экспорт базы знаний
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  onClick={saveSettings}
-                  className="w-full px-4 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-white font-medium"
+              {/* LEARN TAB */}
+              {activeTab === 'learn' && (
+                <motion.div
+                  key="learn"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="h-full overflow-y-auto p-5"
                 >
-                  Сохранить настройки
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+                  <div className="max-w-2xl mx-auto space-y-5">
+                    {/* URL Learning */}
+                    <GlassCard className="p-6" delay={0}>
+                      <div className="flex items-center gap-3 mb-5">
+                        <motion.div 
+                          className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20"
+                          whileHover={{ rotate: 10, scale: 1.05 }}
+                        >
+                          <Globe className="w-5 h-5 text-white" />
+                        </motion.div>
+                        <div>
+                          <h3 className="font-semibold text-sm">Обучение из интернета</h3>
+                          <p className="text-[11px] text-gray-500">Загрузите данные с любого веб-сайта</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <AnimatedInput
+                          value={learnUrl}
+                          onChange={setLearnUrl}
+                          placeholder="https://example.com/article"
+                          icon={<Globe className="w-4 h-4" />}
+                          className="flex-1"
+                        />
+                        <GlowButton
+                          onClick={learnFromUrl}
+                          disabled={isLearning || !learnUrl.trim()}
+                          icon={isLearning ? <Zap className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                        >
+                          {isLearning ? 'Загрузка...' : 'Загрузить'}
+                        </GlowButton>
+                      </div>
+                    </GlassCard>
+
+                    {/* Manual Learning */}
+                    <GlassCard className="p-6" delay={0.1}>
+                      <div className="flex items-center gap-3 mb-5">
+                        <motion.div 
+                          className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20"
+                          whileHover={{ rotate: -10, scale: 1.05 }}
+                        >
+                          <BookOpen className="w-5 h-5 text-white" />
+                        </motion.div>
+                        <div>
+                          <h3 className="font-semibold text-sm">Добавить знания вручную</h3>
+                          <p className="text-[11px] text-gray-500">Введите информацию для базы знаний</p>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <AnimatedInput value={learnTopic} onChange={setLearnTopic} placeholder="Тема (например: Квантовая физика)" />
+                        <AnimatedInput value={learnContent} onChange={setLearnContent} placeholder="Содержание..." multiline rows={5} />
+                        <div className="grid grid-cols-2 gap-3">
+                          <AnimatedInput value={learnCategory} onChange={setLearnCategory} placeholder="Категория" />
+                          <AnimatedInput value={learnTags} onChange={setLearnTags} placeholder="Теги (через запятую)" />
+                        </div>
+                        <GlowButton onClick={learnFromText} disabled={!learnTopic.trim() || !learnContent.trim()} icon={<Plus className="w-4 h-4" />} className="w-full">
+                          Добавить в базу знаний
+                        </GlowButton>
+                      </div>
+                    </GlassCard>
+
+                    {/* Status */}
+                    <AnimatePresence>
+                      {learnStatus && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                          className={`p-4 rounded-2xl text-center text-sm font-medium border ${
+                            learnStatus.includes('✅') ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
+                            learnStatus.includes('⚠️') ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                            'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                          }`}
+                        >
+                          {learnStatus}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Stats */}
+                    <GlassCard className="p-6" delay={0.2}>
+                      <h3 className="font-semibold text-sm mb-5 flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-purple-400" />
+                        Статистика базы знаний
+                      </h3>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        {[
+                          { value: knowledge.length, label: 'Записей', color: 'from-purple-400 to-violet-400' },
+                          { value: new Set(knowledge.map(k => k.category)).size, label: 'Категорий', color: 'from-blue-400 to-cyan-400' },
+                          { value: knowledge.filter(k => k.source !== 'manual').length, label: 'Из интернета', color: 'from-emerald-400 to-green-400' },
+                          { value: knowledge.reduce((sum, k) => sum + k.tags.length, 0), label: 'Тегов', color: 'from-pink-400 to-rose-400' },
+                        ].map((stat, i) => (
+                          <motion.div 
+                            key={stat.label}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.3 + i * 0.1 }}
+                            className="text-center p-3 rounded-xl bg-white/[0.02] border border-white/[0.05]"
+                          >
+                            <p className={`text-2xl font-bold bg-gradient-to-r ${stat.color} bg-clip-text text-transparent`}>{stat.value}</p>
+                            <p className="text-[10px] text-gray-500 mt-1">{stat.label}</p>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </GlassCard>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* SETTINGS TAB */}
+              {activeTab === 'settings' && (
+                <motion.div
+                  key="settings"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="h-full overflow-y-auto p-5"
+                >
+                  <div className="max-w-2xl mx-auto space-y-5">
+                    <GlassCard className="p-6" delay={0}>
+                      <h3 className="font-semibold text-sm mb-5 flex items-center gap-2">
+                        <Cpu className="w-4 h-4 text-purple-400" />
+                        Модель по умолчанию
+                      </h3>
+                      <div className="space-y-2">
+                        {AI_PROVIDERS.map((provider, i) => (
+                          <motion.label
+                            key={provider.id}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.05 }}
+                            whileHover={{ x: 4 }}
+                            className={`
+                              flex items-center gap-3 p-3.5 rounded-xl cursor-pointer transition-all
+                              ${selectedProvider.id === provider.id 
+                                ? 'bg-purple-500/10 border border-purple-500/30 shadow-lg shadow-purple-500/5' 
+                                : 'hover:bg-white/[0.03] border border-transparent'
+                              }
+                            `}
+                          >
+                            <input
+                              type="radio"
+                              name="model"
+                              value={provider.id}
+                              checked={selectedProvider.id === provider.id}
+                              onChange={() => setSelectedProvider(provider)}
+                              className="accent-purple-500"
+                            />
+                            <span className="text-xl">{provider.icon}</span>
+                            <div>
+                              <p className="font-medium text-sm">{provider.name}</p>
+                              <p className="text-[11px] text-gray-500">{provider.description}</p>
+                            </div>
+                          </motion.label>
+                        ))}
+                      </div>
+                    </GlassCard>
+
+                    <GlassCard className="p-6" delay={0.1}>
+                      <h3 className="font-semibold text-sm mb-5 flex items-center gap-2">
+                        <Download className="w-4 h-4 text-emerald-400" />
+                        Данные
+                      </h3>
+                      <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+                        Все данные хранятся локально в IndexedDB вашего браузера. Сделайте бэкап перед очисткой данных.
+                      </p>
+                      <GlowButton
+                        variant="success"
+                        onClick={() => {
+                          const data = { knowledge, sessions, exportDate: new Date().toISOString() };
+                          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url; a.download = 'neuromind-backup.json'; a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        icon={<Download className="w-4 h-4" />}
+                      >
+                        Экспорт базы знаний
+                      </GlowButton>
+                    </GlassCard>
+
+                    <GlassCard className="p-6" delay={0.2}>
+                      <h3 className="font-semibold text-sm mb-4 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-amber-400" />
+                        О NeuroMind
+                      </h3>
+                      <div className="text-xs text-gray-500 space-y-2 leading-relaxed">
+                        <p>🧠 <strong className="text-gray-300">NeuroMind AI</strong> — локальная AI-платформа с базой знаний.</p>
+                        <p>• Работает в браузере без установки</p>
+                        <p>• Офлайн режим с локальной моделью</p>
+                        <p>• 7 бесплатных AI моделей (GPT-4o, Claude, Llama и др.)</p>
+                        <p>• Обучение на данных из интернета</p>
+                        <p>• Все данные хранятся на вашем устройстве</p>
+                      </div>
+                    </GlassCard>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </main>
       </div>
-    </div>
+    </ParticlesProvider>
   );
 }
 
